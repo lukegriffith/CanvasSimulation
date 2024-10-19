@@ -33,7 +33,7 @@ canvas.addEventListener('click', (event) => {
 });
 
 function updateCanvas(data) {
-    console.log(data);
+    //console.log(data);
     // Clear the canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -44,6 +44,22 @@ function updateCanvas(data) {
     // Separate active and inactive entities
     const inactiveEntities = [];
     const activeEntities = [];
+
+    data.Entities.forEach((entity) => {
+        if (entity.Active) {
+            activeEntities.push(entity);
+        } else {
+            inactiveEntities.push(entity);
+        }
+    });
+
+    // Draw inactive entities first
+    inactiveEntities.forEach((entity) => {
+        ctx.beginPath(); // Start a new path
+        ctx.arc(entity.X, entity.Y, entity.Width, 0, Math.PI * 2); // Create a circle
+        ctx.fillStyle = getTeamColor(entity.TeamID, data.TeamCount, false, true);
+        ctx.fill(); // Fill the circle
+    });
 
     // Separate active and inactive food items
     let activeFood = [];
@@ -70,7 +86,7 @@ function updateCanvas(data) {
             ctx.fill(); // Fill the diamond
         });
 
-        // Draw active food items as green diamonds
+        // Draw active food items as gold diamonds
         activeFood.forEach((food) => {
             ctx.beginPath(); // Start a new path
             ctx.moveTo(food.X, food.Y - food.Size); // Move to the top point of the diamond
@@ -78,31 +94,15 @@ function updateCanvas(data) {
             ctx.lineTo(food.X, food.Y + food.Size); // Draw to the bottom point
             ctx.lineTo(food.X - food.Size, food.Y); // Draw to the left point
             ctx.closePath(); // Close the path to form a diamond
-            ctx.fillStyle = "green"; // Set the fill color for active food
+            ctx.fillStyle = "lightgreen"; // Set the fill color for active food
             ctx.fill(); // Fill the diamond
         });
     }
-    data.Entities.forEach((entity) => {
-        if (entity.Active) {
-            activeEntities.push(entity);
-        } else {
-            inactiveEntities.push(entity);
-        }
-    });
-
-    // Draw inactive entities first
-    inactiveEntities.forEach((entity) => {
-        ctx.beginPath(); // Start a new path
-        ctx.arc(entity.X, entity.Y, entity.Width, 0, Math.PI * 2); // Create a circle
-        ctx.fillStyle = inactiveColor; // Set the fill color for inactive
-        ctx.fill(); // Fill the circle
-    });
-
     // Then draw active entities
     activeEntities.forEach((entity) => {
         ctx.beginPath(); // Start a new path
         ctx.arc(entity.X, entity.Y, entity.Width, 0, Math.PI * 2); // Create a circle
-        teamColor = getTeamColor(entity.TeamID, data.TeamCount, false);
+        teamColor = getTeamColor(entity.TeamID, data.TeamCount);
         ctx.fillStyle = teamColor; // Set the fill color for active
         if (entity.Invulnerable) {
             
@@ -127,7 +127,7 @@ function updateCanvas(data) {
     });
 
     // Display the active count in the top left corner
-    ctx.fillStyle = '#000000'; // Text color
+    ctx.fillStyle = '#FFFFFF'; // Text color
     ctx.font = '20px Arial'; // Font size and style
     ctx.fillText(`Active Count: ${activeCount}`, 10, 30); // Draw the text at position (10, 30)
 
@@ -140,13 +140,16 @@ function updateCanvas(data) {
 
 }
 
-function getTeamColor(teamID, totalTeams, isInvulnerable) {
+function getTeamColor(teamID, totalTeams, isInvulnerable=false, isInactive=false) {
     // Scale the hue based on the team ID
     let hue = (360 / totalTeams) * teamID; // Evenly distribute hues across 360 degrees
 
     // Set saturation and lightness for regular and invulnerable states
-    let saturation = isInvulnerable ? 20 : 70; // Lower saturation to make it closer to gray when invulnerable
+    let saturation = isInvulnerable ? 65 : 70; // Lower saturation to make it closer to gray when invulnerable
     let lightness = isInvulnerable ? 60 : 50; // Slightly higher lightness for a muted look when invulnerable
+
+    saturation = isInactive ? 55 : saturation
+    lightness = isInactive ? 80 : lightness
 
     // Convert HSL to hex and return the color
     return hslToHex(hue, saturation, lightness);

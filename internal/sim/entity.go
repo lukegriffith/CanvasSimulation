@@ -5,20 +5,31 @@ import (
 	"math"
 )
 
+type State string
+
+const (
+	SeekFoodState            State = "SeekFood"
+	AssistingTeamMemberState State = "AssistingTeamMember"
+	SeekWeakerEnemyState     State = "AssistingWeakerEnemyState"
+)
+
 type Entity struct {
-	ID           int     // Unique identifier for the entity
-	X, Y         float64 // Position of the entity
-	VX, VY       float64 // Velocity of the entity
-	Width        float64 // Width of the entity (if it's rectangular)
-	Height       float64 // Height of the entity (if it's rectangular)
-	Active       bool    // Whether the entity is active in the simulation
-	Health       float64 // Health of the entity
-	MaxHealth    float64
-	Invulnerable bool    // Whether the entity is currently invulnerable
-	InvulnTimer  float64 // Time remaining in the invulnerable state
-	HungerLevel  float64
-	TeamID       int
-	TeamNeed     float64
+	ID                int     // Unique identifier for the entity
+	X, Y              float64 // Position of the entity
+	VX, VY            float64 // Velocity of the entity
+	Width             float64 // Width of the entity (if it's rectangular)
+	Height            float64 // Height of the entity (if it's rectangular)
+	Active            bool    // Whether the entity is active in the simulation
+	Health            float64 // Health of the entity
+	MaxHealth         float64
+	Invulnerable      bool    // Whether the entity is currently invulnerable
+	InvulnTimer       float64 // Time remaining in the invulnerable state
+	HungerLevel       float64
+	TeamID            int
+	TeamNeed          float64
+	TeamTimeout       bool
+	TeamAssistTimeout float64
+	State             State
 }
 
 func (e *Entity) DecideAction(entities []*Entity, foods []*Food) {
@@ -26,12 +37,57 @@ func (e *Entity) DecideAction(entities []*Entity, foods []*Food) {
 	if e.HungerLevel > 80 {
 		// If hunger is critical, prioritize seeking food
 		e.SeekFood(foods)
-	} else if e.TeamNeed > 50 {
+		e.State = SeekFoodState
+	} else if e.TeamNeed > 50 && e.TeamAssistTimeout <= 0 {
 		// If a teammate needs help, assist the teammate
 		e.AssistTeamMember(entities)
+		e.State = AssistingTeamMemberState
 	} else {
 		// Default action
-		e.SeekFood(foods)
+		e.SeekWeakerEnemy(entities)
+		e.State = SeekWeakerEnemyState
+	}
+}
+
+func (e *Entity) SeekWeakerEnemy(entities []*Entity) {
+	if !e.Active {
+		return // Skip if the entity is not active
+	}
+
+	// Find the closest active food
+	var closestWeakerEnemy *Entity
+	closestDistanceSquared := float64(-1)
+
+	for i := range entities {
+		other := entities[i]
+		if !other.Active || other.ID == e.ID || other.TeamID == e.TeamID || other.Width >= e.Width {
+			continue // Skip inactive food
+		}
+
+		// Calculate squared distance to the e
+		dx := e.X - e.X
+		dy := e.Y - e.Y
+		distanceSquared := dx*dx + dy*dy
+
+		// Check if this is the closest e found so far
+		if closestDistanceSquared < 0 || distanceSquared < closestDistanceSquared {
+			closestDistanceSquared = distanceSquared
+			closestWeakerEnemy = other
+		}
+	}
+
+	// Move towards the closest e if found
+	if closestWeakerEnemy != nil {
+		dx := closestWeakerEnemy.X - e.X
+		dy := closestWeakerEnemy.Y - e.Y
+
+		// Normalize the direction and adjust velocity using pythagoras
+		length := math.Sqrt(dx*dx + dy*dy)
+		if length != 0 {
+			// TODO: Scale on hunger need?
+			e.VX += (dx / length) * 0.1 // Scale speed towards the food
+			e.VY += (dy / length) * 0.1
+		}
 	}
 }
 
@@ -116,6 +172,15 @@ func (e *Entity) Act(nearbyEntities []*Entity, canvasWidth, canvasHeight, deltaT
 		return
 	}
 
+	if e.TeamTimeout {
+		e.TeamAssistTimeout -= deltaTime
+		if e.TeamAssistTimeout <= 0 {
+			e.TeamTimeout = false
+			e.TeamAssistTimeout = 0
+			fmt.Printf("Entity %d is no longer on team timeout.\n", e.ID)
+		}
+	}
+
 	// Step 3: Update position based on velocity
 	e.X += e.VX * deltaTime
 	e.Y += e.VY * deltaTime
@@ -149,11 +214,15 @@ func (e *Entity) Act(nearbyEntities []*Entity, canvasWidth, canvasHeight, deltaT
 	// Step 6: Interact with nearby entities (consume behavior)
 	e.Consume(nearbyEntities)
 
+	if e.HungerLevel > 0 {
+		e.HungerLevel -= 1.0
+	}
 	// Step 7: Deactivate if health is depleted
 	if e.Health <= 0 {
 		e.Active = false
 		fmt.Printf("Entity %d has been deactivated due to depleted health.\n", e.ID)
 	}
+
 }
 
 // Helper function to clamp a value between a minimum and maximum range
@@ -195,10 +264,10 @@ func (e *Entity) Consume(nearbyEntities []*Entity) {
 
 		// Step 3: Consume the other entity
 		// Apply a health penalty scaled by the relative size of the entities
-		healthPenalty := 5.0 * (other.Width / e.Width)
+		healthPenalty := 40.0 * (other.Width / e.Width)
 		// Heal entity for eating
-		e.Health += healthPenalty
 		// Damage other for being consumed
+		e.Health -= healthPenalty * 0.3
 		other.Health -= healthPenalty
 
 		// If health drops below zero, deactivate the entity
@@ -209,11 +278,7 @@ func (e *Entity) Consume(nearbyEntities []*Entity) {
 		}
 
 		// Increase the size of the consuming entity
-		if e.Width < config.MaxSize {
-			growthFactor := 0.1
-			e.Width += other.Width * growthFactor
-			e.Height += other.Height * growthFactor
-		}
+		e.Grow(0.1)
 
 		// Step 4: Trigger invulnerability
 		other.Invulnerable = true
@@ -286,13 +351,12 @@ func (e *Entity) ConsumeFood(nearbyFood []*Food) {
 
 		if distanceSquared < foodThreshold*foodThreshold {
 			// Consume the food
-			if e.Width < config.MaxSize {
-				e.Width += food.Size * 0.1 // Increase entity size based on food size
-				e.Height += food.Size * 0.1
-			}
+			e.Grow(0.1)
+			e.Health += food.Size * 2
 			food.Active = false // Deactivate the food
 
 			fmt.Printf("Entity %d consumed Food %d and grew.\n", e.ID, food.ID)
+			e.HungerLevel = 100.0
 			break // Only consume one food per update
 		}
 	}
@@ -301,10 +365,16 @@ func (e *Entity) SetActive(active bool) {
 	e.Active = active
 }
 
+func (e *Entity) Grow(factor float64) {
+	if e.Width < config.MaxSize {
+		e.Width += e.Width * factor
+	}
+}
+
 func (e *Entity) AssistTeamMember(entities []*Entity) {
 	// Find the nearest teammate in need of help
 	var nearestTeammate *Entity
-	minDistance := math.MaxFloat64
+	minDistance := 4.0
 
 	for _, teammate := range entities {
 		if teammate.TeamID == e.TeamID && teammate != e && teammate.Health < 50 {
@@ -322,6 +392,8 @@ func (e *Entity) AssistTeamMember(entities []*Entity) {
 	// If a teammate is found, perform an assist action
 	if nearestTeammate != nil {
 		e.PerformAssistAction(nearestTeammate)
+		e.TeamTimeout = true
+		e.TeamAssistTimeout = 5.0
 	}
 }
 
@@ -335,7 +407,7 @@ func (e *Entity) DistanceTo(other *Entity) float64 {
 // Perform an assist action, e.g., healing the teammate (helper method)
 func (e *Entity) PerformAssistAction(teammate *Entity) {
 	// Example: Heal the teammate by a certain amount
-	healAmount := 20.0
+	healAmount := 0.1
 	teammate.Health += healAmount
 
 	// Cap the health at a maximum value (assuming 100 is the max)

@@ -32,9 +32,9 @@ func restartSimulation() {
 }
 
 const (
-	entityCount  = 1000
-	foodCount    = 20
-	teamCount    = 10
+	entityCount  = 25
+	foodCount    = 200
+	teamCount    = 2
 	canvasWidth  = 1000
 	canvasHeight = 600
 )

@@ -21,16 +21,17 @@ func InitializeEntities(population int, teams int, canvasWidth float64, canvasHe
 	var teamCounter = 0
 	for i := 0; i < population; i++ {
 		entities[i] = &Entity{
-			ID:        i + 1,
-			X:         randFloat(0, canvasWidth),                      // Random X position between 0 and 800
-			Y:         randFloat(0, canvasHeight),                     // Random Y position between 0 and 600
-			VX:        randFloat(-10, 10),                             // Random velocity X between -2 and 2
-			VY:        randFloat(-10, 10),                             // Random velocity Y between -2 and 2
-			Width:     randFloat(config.MinSize, config.StartMaxSize), // Random width between 20 and 100
-			Active:    true,
-			Health:    100, // Set initial health to 100
-			MaxHealth: 100,
-			TeamID:    teamCounter % teams,
+			ID:          i + 1,
+			X:           randFloat(0, canvasWidth),                      // Random X position between 0 and 800
+			Y:           randFloat(0, canvasHeight),                     // Random Y position between 0 and 600
+			VX:          randFloat(-10, 10),                             // Random velocity X between -2 and 2
+			VY:          randFloat(-10, 10),                             // Random velocity Y between -2 and 2
+			Width:       randFloat(config.MinSize, config.StartMaxSize), // Random width between 20 and 100
+			Active:      true,
+			Health:      100, // Set initial health to 100
+			MaxHealth:   100,
+			TeamID:      teamCounter % teams,
+			HungerLevel: 100,
 		}
 		teamCounter = teamCounter + 1
 	}

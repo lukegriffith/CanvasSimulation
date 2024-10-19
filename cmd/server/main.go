@@ -1,12 +1,42 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lukegriffith/simulation/internal/sim" // Adjust the import path for your entity package
+)
+
+func listenForEnter() {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("Press Enter to restart the simulation...\n")
+		_, err := reader.ReadString('\n') // Wait for Enter key
+		if err != nil {
+			fmt.Println("Error reading input:", err)
+			continue
+		}
+		// Restart the simulation when Enter is pressed
+		restartSimulation()
+	}
+}
+
+func restartSimulation() {
+	// Reinitialize the entities or any other necessary state
+	sim.InitializeEntities(entityCount, teamCount, canvasWidth, canvasHeight) // You can change the number of entities as needed
+	fmt.Println("Simulation restarted.")
+}
+
+const (
+	entityCount  = 1000
+	foodCount    = 20
+	teamCount    = 10
+	canvasWidth  = 1000
+	canvasHeight = 600
 )
 
 var upgrader = websocket.Upgrader{
@@ -16,11 +46,13 @@ var upgrader = websocket.Upgrader{
 }
 
 var clients = make(map[*websocket.Conn]bool) // Connected clients
-var broadcast = make(chan []sim.Entity)      // Broadcast channel for entities
+var broadcast = make(chan responseData)      // Broadcast channel for entities
 
 func main() {
-	sim.SetCanvas(800, 500)
-	sim.InitializeEntities(100)
+	sim.SetCanvas(canvasWidth, canvasHeight)
+	sim.SetConfig(sim.Config{5, 10, 25})
+	sim.InitializeEntities(entityCount, teamCount, canvasWidth, canvasHeight)
+	sim.InitializeFood(foodCount, canvasWidth, canvasHeight)
 
 	// Serve static files
 	http.Handle("/", http.FileServer(http.Dir("./static")))
@@ -29,6 +61,7 @@ func main() {
 	http.HandleFunc("/ws", handleConnections)
 
 	// Start the simulation update loop in a separate goroutine
+	go listenForEnter()
 	go updateSimulationPeriodically()
 	go handleMessages()
 
@@ -36,8 +69,9 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
+var activeConnections int // Track the number of active connections
+
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	// Upgrade initial HTTP connection to a WebSocket
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("WebSocket upgrade error:", err)
@@ -47,6 +81,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Register new client
 	clients[ws] = true
+	activeConnections++
+	fmt.Println("New WebSocket connection established. Active connections:", activeConnections)
 
 	// Clean up when the client disconnects
 	for {
@@ -54,6 +90,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Println("Client disconnected:", err)
 			delete(clients, ws)
+			activeConnections--
+			fmt.Println("Active connections:", activeConnections)
 			break
 		}
 	}
@@ -61,22 +99,46 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 func updateSimulationPeriodically() {
 	ticker := time.NewTicker(16 * time.Millisecond) // Roughly 60 FPS
+	defer ticker.Stop()                             // Ensure the ticker is stopped when the function exits
+	previousTime := time.Now()                      // Track the previous time for deltaTime calculation
+
 	for {
 		<-ticker.C
-		sim.UpdateSimulation()        // Update the simulation
-		entities := sim.GetEntities() // Get the current state of entities
+		currentTime := time.Now()
+		deltaTime := currentTime.Sub(previousTime).Seconds() // Calculate deltaTime in seconds
+		previousTime = currentTime
 
-		fmt.Println("Broadcasting entities:", entities) // Debug log
+		// Skip simulation updates if no active connections
+		if activeConnections == 0 {
+			continue
+		}
 
-		broadcast <- entities // Send the updated entities to the broadcast channel
+		// Only update the simulation if there are active connections
+		if activeConnections > 0 {
+			sim.UpdateSimulation(deltaTime) // Pass deltaTime to the UpdateSimulation function
+			entities := sim.GetEntities()   // Get the current state of entities
+			foods := sim.GetFood()
+			// Broadcast the updated entities
+			broadcast <- responseData{
+				Entities:  entities,
+				Foods:     foods,
+				TeamCount: teamCount,
+			}
+		}
 	}
+}
+
+type responseData struct {
+	Entities  []*sim.Entity
+	Foods     []*sim.Food
+	TeamCount int
 }
 
 func handleMessages() {
 	for {
-		entities := <-broadcast
+		data := <-broadcast
 		for client := range clients {
-			err := client.WriteJSON(entities)
+			err := client.WriteJSON(data)
 			if err != nil {
 				fmt.Println("Error sending data to client:", err)
 				client.Close()

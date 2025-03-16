@@ -186,9 +186,8 @@ func (e *Entity) Act(nearbyEntities []*Entity, canvasWidth, canvasHeight, deltaT
 	e.Y += e.VY * deltaTime
 
 	// Step 4: Limit the speed based on the size of the entity
-	baseSpeed := 10.0
 	sizeFactor := 1.0 / (1.0 + (e.Width / 100.0)) // Speed decreases as size increases
-	maxSpeed := baseSpeed * sizeFactor
+	maxSpeed := config.BaseSpeed * sizeFactor
 
 	// Cap the velocity components to the maximum speed
 	e.VX = clamp(e.VX, -maxSpeed, maxSpeed)
@@ -215,7 +214,7 @@ func (e *Entity) Act(nearbyEntities []*Entity, canvasWidth, canvasHeight, deltaT
 	e.Consume(nearbyEntities)
 
 	if e.HungerLevel > 0 {
-		e.HungerLevel -= 1.0
+		e.HungerLevel += 1.0
 	}
 	// Step 7: Deactivate if health is depleted
 	if e.Health <= 0 {
@@ -356,7 +355,7 @@ func (e *Entity) ConsumeFood(nearbyFood []*Food) {
 			food.Active = false // Deactivate the food
 
 			fmt.Printf("Entity %d consumed Food %d and grew.\n", e.ID, food.ID)
-			e.HungerLevel = 100.0
+			e.HungerLevel = 0.0
 			break // Only consume one food per update
 		}
 	}

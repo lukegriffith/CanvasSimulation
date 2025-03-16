@@ -2,13 +2,21 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lukegriffith/simulation/internal/sim" // Adjust the import path for your entity package
+)
+
+var (
+	canvasWidth  float64 = 1000
+	canvasHeight float64 = 600
+	simMutex     sync.Mutex
 )
 
 func listenForEnter() {
@@ -20,23 +28,24 @@ func listenForEnter() {
 			fmt.Println("Error reading input:", err)
 			continue
 		}
+		simMutex.Lock()
 		// Restart the simulation when Enter is pressed
 		restartSimulation()
+		simMutex.Unlock()
 	}
 }
 
 func restartSimulation() {
 	// Reinitialize the entities or any other necessary state
 	sim.InitializeEntities(entityCount, teamCount, canvasWidth, canvasHeight) // You can change the number of entities as needed
+	sim.InitializeFood(foodCount, canvasWidth, canvasHeight)
 	fmt.Println("Simulation restarted.")
 }
 
-const (
-	entityCount  = 25
-	foodCount    = 200
-	teamCount    = 2
-	canvasWidth  = 1000
-	canvasHeight = 600
+var (
+	entityCount = 10
+	foodCount   = 200
+	teamCount   = 2
 )
 
 var upgrader = websocket.Upgrader{
@@ -50,7 +59,7 @@ var broadcast = make(chan responseData)      // Broadcast channel for entities
 
 func main() {
 	sim.SetCanvas(canvasWidth, canvasHeight)
-	sim.SetConfig(sim.Config{5, 10, 25})
+	sim.SetConfig(sim.Config{MinSize: 5, StartMaxSize: 10, MaxSize: 15, BaseSpeed: 10})
 	sim.InitializeEntities(entityCount, teamCount, canvasWidth, canvasHeight)
 	sim.InitializeFood(foodCount, canvasWidth, canvasHeight)
 
@@ -71,6 +80,15 @@ func main() {
 
 var activeConnections int // Track the number of active connections
 
+type MessageType struct {
+	Type string
+}
+
+type CanvasData struct {
+	Width  int
+	Height int
+}
+
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -86,7 +104,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Clean up when the client disconnects
 	for {
-		_, _, err := ws.ReadMessage()
+		messageType, message, err := ws.ReadMessage()
 		if err != nil {
 			fmt.Println("Client disconnected:", err)
 			delete(clients, ws)
@@ -94,7 +112,74 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			fmt.Println("Active connections:", activeConnections)
 			break
 		}
+
+		if messageType == websocket.TextMessage {
+
+			var msgType MessageType
+			err := json.Unmarshal(message, &msgType)
+			if err != nil {
+				fmt.Println("unable to marshal canvas data")
+			}
+
+			switch t := msgType.Type; t {
+			case "resize":
+				resize(message)
+			case "settings":
+				settings(message)
+			}
+		}
 	}
+}
+
+type Settings struct {
+	Population   int
+	TeamCount    int
+	FoodCount    int
+	MinSize      float64
+	StartMaxSize float64
+	MaxSize      float64
+	BaseSpeed    float64
+}
+
+func settings(message []byte) {
+	var data Settings
+	fmt.Println("settings called")
+	err := json.Unmarshal(message, &data)
+	if err != nil {
+		fmt.Println("unable to marshal settings data", err)
+		fmt.Println(string(message))
+	}
+	teamCount = data.TeamCount
+	entityCount = data.Population
+	foodCount = data.FoodCount
+	simMutex.Lock()
+	sim.SetConfig(sim.Config{
+		MinSize:      data.MinSize,
+		StartMaxSize: data.StartMaxSize,
+		MaxSize:      data.MaxSize,
+		BaseSpeed:    data.BaseSpeed,
+	})
+	restartSimulation()
+	simMutex.Unlock()
+
+}
+
+func resize(message []byte) {
+	var data CanvasData
+	fmt.Println("resize called")
+	err := json.Unmarshal(message, &data)
+	if err != nil {
+		fmt.Println("unable to marshal canvas data")
+	}
+	fmt.Println("set canvas", data)
+	canvasWidth = float64(data.Width)
+	canvasHeight = float64(data.Height)
+	sim.SetCanvas(canvasWidth, canvasHeight)
+
+	simMutex.Lock()
+	// Restart the simulation when Enter is pressed
+	restartSimulation()
+	simMutex.Unlock()
 }
 
 func updateSimulationPeriodically() {
@@ -103,6 +188,7 @@ func updateSimulationPeriodically() {
 	previousTime := time.Now()                      // Track the previous time for deltaTime calculation
 
 	for {
+		simMutex.Lock()
 		<-ticker.C
 		currentTime := time.Now()
 		deltaTime := currentTime.Sub(previousTime).Seconds() // Calculate deltaTime in seconds
@@ -110,6 +196,7 @@ func updateSimulationPeriodically() {
 
 		// Skip simulation updates if no active connections
 		if activeConnections == 0 {
+			simMutex.Unlock()
 			continue
 		}
 
@@ -125,6 +212,7 @@ func updateSimulationPeriodically() {
 				TeamCount: teamCount,
 			}
 		}
+		simMutex.Unlock()
 	}
 }
 

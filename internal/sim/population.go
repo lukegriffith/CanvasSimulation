@@ -11,7 +11,7 @@ var foods []*Food
 var config Config
 
 type Config struct {
-	MinSize, StartMaxSize, MaxSize float64
+	MinSize, StartMaxSize, MaxSize, BaseSpeed float64
 }
 
 func InitializeEntities(population int, teams int, canvasWidth float64, canvasHeight float64) {
@@ -49,21 +49,16 @@ func UpdateSimulation(deltaTime float64) {
 		if entities[i].Active {
 			// Evaluate team needs to update the entity's priority
 			entities[i].EvaluateTeamNeed(entities)
-
 			// Decide on the action (assist teammate, seek food, etc.)
 			entities[i].DecideAction(entities, foods)
-
 			// Consume food if possible
 			entities[i].ConsumeFood(foods)
-
 			// Update position, perform other actions, and keep within the canvas
 			entities[i].Act(entities, canvasWidth, canvasHeight, deltaTime)
 		}
 	}
-
 	// Periodically respawn food items with a certain chance
 	RespawnFood(0.001, canvasWidth, canvasHeight)
-
 	if respawnTimer >= 5.0 {
 		RespawnFood(0.01, canvasWidth, canvasHeight)
 		respawnTimer = 0.0

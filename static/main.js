@@ -1,11 +1,55 @@
 const canvas = document.getElementById('simulationCanvas');
 const ctx = canvas.getContext('2d');
 
+// Function to update the HTML table with team counts
+function updateTeamTable(teamCounts) {
+    const tableBody = document.getElementById('teamTableBody');
+    tableBody.innerHTML = ''; // Clear the table before updating
+
+    for (const [teamID, count] of Object.entries(teamCounts)) {
+        // Create a new row for each team
+        const row = document.createElement('tr');
+
+        // Create the team cell
+        const teamCell = document.createElement('td');
+        teamCell.textContent = `Team ${teamID}`;
+
+        // Create the count cell
+        const countCell = document.createElement('td');
+        countCell.textContent = count;
+
+        // Append the cells to the row
+        row.appendChild(teamCell);
+        row.appendChild(countCell);
+
+        // Append the row to the table body
+        tableBody.appendChild(row);
+    }
+}
+
+
+function resizeCanvas(socket) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Optional: Clear the canvas or redraw content after resizing
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // You can add code here to redraw content if needed
+    data = {
+     Type: 'resize',
+     Width: canvas.width,
+     Height: canvas.height,
+    }
+    console.log(data)
+    socket.send(JSON.stringify(data))
+}
+
 // Connect to the WebSocket server
 const socket = new WebSocket('ws://localhost:8080/ws');
 
 socket.onopen = () => {
     console.log('WebSocket connection established');
+    resizeCanvas(socket)
 };
 
 socket.onerror = (error) => {
@@ -15,6 +59,10 @@ socket.onerror = (error) => {
 socket.onclose = () => {
     console.log('WebSocket connection closed');
 };
+// Initial resize to fill the screen
+
+// Event listener to resize the canvas when the window is resized
+window.addEventListener('resize', function() { resizeCanvas(socket) });
 
 // Handle incoming messages from the WebSocket
 socket.onmessage = (event) => {
@@ -31,6 +79,13 @@ canvas.addEventListener('click', (event) => {
     // Example: Sending a message to the server
     socket.send(JSON.stringify({ type: 'click', x: x, y: y }));
 });
+
+
+
+// Example: Draw a background color to test
+ctx.fillStyle = 'lightblue';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
 
 function updateCanvas(data) {
     //console.log(data);
@@ -126,17 +181,8 @@ function updateCanvas(data) {
         }
     });
 
-    // Display the active count in the top left corner
-    ctx.fillStyle = '#FFFFFF'; // Text color
-    ctx.font = '20px Arial'; // Font size and style
-    ctx.fillText(`Active Count: ${activeCount}`, 10, 30); // Draw the text at position (10, 30)
-
-    // Display the count for each team
-    let offsetY = 50; // Start below the total count
-    for (const [teamID, count] of Object.entries(teamCounts)) {
-        ctx.fillText(`Team ${teamID} Count: ${count}`, 10, offsetY);
-        offsetY += 20; // Move down for the next line
-    }
+    // Update the HTML table
+    updateTeamTable(teamCounts);
 
 }
 
@@ -148,8 +194,8 @@ function getTeamColor(teamID, totalTeams, isInvulnerable=false, isInactive=false
     let saturation = isInvulnerable ? 65 : 70; // Lower saturation to make it closer to gray when invulnerable
     let lightness = isInvulnerable ? 60 : 50; // Slightly higher lightness for a muted look when invulnerable
 
-    saturation = isInactive ? 55 : saturation
-    lightness = isInactive ? 80 : lightness
+    saturation = isInactive ? 10 : saturation
+    lightness = isInactive ? 30 : lightness
 
     // Convert HSL to hex and return the color
     return hslToHex(hue, saturation, lightness);
@@ -179,4 +225,43 @@ function hslToHex(h, s, l) {
 }
 
 
+// Show the form
+document.getElementById('showFormButton').addEventListener('click', () => {
+    document.getElementById('formModal').style.display = 'block';
+});
 
+// Hide the form
+function hideForm() {
+    document.getElementById('formModal').style.display = 'none';
+}
+
+// Save simulation settings
+function saveSimulationSettings() {
+    const population = document.getElementById('population').value;
+    const teamCount = document.getElementById('teamCount').value;
+    const foodCount = document.getElementById('foodCount').value;
+    const minSize = document.getElementById('MinSize').value;
+    const startMaxSize = document.getElementById('StartMaxSize').value;
+    const maxSize = document.getElementById('MaxSize').value;
+    const baseSpeed = document.getElementById('BaseSpeed').value;
+
+    // Example of handling the settings
+    //
+    data = {
+        Type: 'settings',
+        TeamCount: Number(teamCount),
+        Population: Number(population),
+        FoodCount: Number(foodCount),
+        MinSize: Number(minSize),
+        StartMaxSize: Number(startMaxSize),
+        MaxSize: Number(maxSize),
+        baseSpeed: Number(baseSpeed),
+    }
+    socket.send(JSON.stringify(data))
+
+
+    // Add your simulation control logic here
+
+    // Hide the form after saving
+    hideForm();
+}

@@ -7,14 +7,85 @@
     <style>
         canvas {
             border: 1px solid black;
+            display: block;
+            position: relative;
+            z-index: 1;
         }
         body {
             background-color: #2E2E2E; /* Dark gray color */
-    }
+            margin: 0;
+            padding: 0;
+            overflow: hidden
+        }
+        .overlay {
+            position: absolute;
+            z-index: 2;
+            top: 50px;
+            left: 50px;
+            background-color: rgba(255, 255, 255, 0.8); /* Semi-transparent background */
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        #formModal {
+            display: none; /* Hidden by default */
+            position: absolute;
+            z-index: 3; /* Above the canvas */
+            top: 100px;
+            left: 100px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
     </style>
 </head>
 <body>
     <canvas id="simulationCanvas" width="1000" height="600"></canvas>
+    <div class="overlay">
+        <button id="showFormButton">Show Simulation Control</button>
+        <table id="teamTable" border="1">
+            <thead>
+                <tr>
+                    <th>Team</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody id="teamTableBody">
+                <!-- Rows will be dynamically added here -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Form Modal -->
+    <div id="formModal">
+        <h3>Simulation Control</h3>
+        <form id="simulationForm">
+            <label for="population">Population:</label>
+            <input type="number" id="population" name="population" min="10" max="10000"><br><br>
+
+            <label for="teamCount">Number of Teams:</label>
+            <input type="number" id="teamCount" name="teamCount" min="1" max="1000"><br><br>
+
+            <label for="foodCount">Food Count:</label>
+            <input type="number" id="foodCount" name="foodCount" min="1" max="1000"><br><br>
+
+            <label for="MinSize">Min Size:</label>
+            <input type="number" id="MinSize" name="MinSize" min="1" max="1000"><br><br>
+            StartMaxSiize
+            <label for="StartMaxSize">Start Max Size:</label>
+            <input type="number" id="StartMaxSize" name="StartMaxSize" min="1" max="1000"><br><br>
+            MaxSize
+            <label for="MaxSize">Max Size:</label>
+            <input type="number" id="MaxSize" name="MaxSize" min="1" max="1000"><br><br>
+            BaseSpeed
+            <label for="BaseSpeed">Base Speed:</label>
+            <input type="number" id="BaseSpeed" name="BaseSpeed" min="1" max="1000"><br><br>
+
+            <button type="button" onclick="saveSimulationSettings()">Save</button>
+            <button type="button" onclick="hideForm()">Cancel</button>
+        </form>
+    </div>
+
     <script src="main.js"></script>
 </body>
 </html>
